@@ -7,15 +7,16 @@ from pyparsing import (ParserElement, Word, Optional, Literal, oneOf, LineEnd,
                         alphas, nums, alphanums, pythonStyleComment)
 import graph_tool.all as gt 
 
-log2ts = '/usr/local/bin/log2ts'
-draw_astg = '/usr/local/bin/draw_astg'
-
 class IndeterminedTsError(Exception):
     """This error is raised whenever there is non determinism in the TS and this is
     not expected"""
     pass
 
-def ts_from_log(log, conversion, tail=0, folding=0 ):
+class UnfitTsError(Exception):
+    """Raised whether the logs are not reproduced by the TS."""
+    pass
+
+def ts_from_log(log, conversion, tail=0, folding=0):
     """Uses the log2ts application to generate a TS out of the log.
     [conversion] describes which conversion method must be used.
         'seq': sequential conversion
@@ -34,8 +35,8 @@ def ts_from_log(log, conversion, tail=0, folding=0 ):
         log_filename = tmpfile.name
     else:
         log_filename = log.filename
-    params = [log2ts, '--tail', '{0}'.format(tail)]
-#        return params
+    params = ['log2ts', '--tail', '{0}'.format(tail)]
+
     if folding > 0:
         params += ['--fold','{0}'.format(folding),'--modulo']
     else:
@@ -57,57 +58,56 @@ def ts_from_log(log, conversion, tail=0, folding=0 ):
 #        return params
 # definition of TS grammar
 ParserElement.setDefaultWhitespaceChars(" \t")
-id = Word(alphanums+"_\"':-")
+id = Word(alphanums+"_\"'.:-")
 #place = Literal("p") + Word(nums)
 number = Word(nums).setParseAction(lambda tokens: int(tokens[0]))
 newlines = Suppress(OneOrMore(LineEnd()))
 modelName = ".model" + id("modelName") + newlines
-signalNames = ZeroOrMore( Suppress(oneOf(".inputs .outputs .dummy")) + OneOrMore( id ) + newlines)("signals")
+signalNames = ZeroOrMore(Suppress(oneOf(".inputs .outputs")) + OneOrMore( id ) + newlines)("signals")
+dummyNames = Optional(Suppress(".dummy") + OneOrMore( id ) + newlines, default=[])("dummies")
 arc = id + id + id + newlines
-graph = Literal(".state graph") + Suppress(OneOrMore(LineEnd())) + OneOrMore(Group(arc))("arcs")
+graph = Literal(".state graph") + newlines + OneOrMore(Group(arc))("arcs")
 frequency_list = ZeroOrMore(Group(id+number)+newlines)
 frequency = ".frequencies" + Suppress(OneOrMore(LineEnd())) + frequency_list("frequencies")
 marking_list = ZeroOrMore(id)
-marking = ".marking"+Suppress("{") + marking_list("marking") + Suppress("}") + newlines
-ts_grammar = Optional(newlines) + Optional(modelName) + signalNames + graph + marking + Optional(frequency) + ".end"
+marking = ".marking" + Suppress("{") + marking_list("marking") + Suppress("}") + newlines
+ts_grammar = Optional(newlines) + Optional(modelName) + signalNames + dummyNames + graph + marking + Optional(frequency) + ".end"
 ts_grammar.ignore(pythonStyleComment)
 
-def ts_from_file(filename):
+def ts_from_sis(file_or_filename):
     """Loads a TS (possibly extended with state frequencies) in SIS format."""
-    try:
-        ast = ts_grammar.parseFile( filename )
-    except ParseException, pe:
-        print pe
-        raise pe
-    else:
-        ts = TransitionSystem(filename=filename, format='sis')
-        ts.set_name( ast.modelName )
-        ts.set_signals( ast.signals )
-#        tuplelist = [ (m[0],m[1]) for m in ast.frequencies ]
-#        ts.capacities = dict( tuplelist )
-        ts.set_initial_state( ast.marking[0] )
-        #print ast.arcs
-        for a in ast.arcs:
-            #print a[0], a[1], a[2]
-            s1 = ts.add_state(a[0])
-            s2 = ts.add_state(a[2])
-            #ts.states.add(a[0])
-            #ts.states.add(a[2])
-            ts.add_edge(s1,a[1],s2)
-#            if ts.outarc.has_key(a[0]):
-#                #add info to the dictionary
-#                ts.outarc[a[0]] = dict(ts.outarc[a[0]].items() + [(a[1],a[2])])
-#            else: 
-#                ts.outarc[a[0]] = dict([(a[1],a[2])])
-        if ast.frequencies:
-            ts.add_state_frequencies()
-            for f in ast.frequencies:
-                ts.set_state_frequency(f[0], f[1])
-            #ts.frequencies[f[0]] = f[1]
-        ts.mark_as_modified( False )
-        return ts
-        #self.__parseAST( result )
+    if isinstance(file_or_filename, basestring): #a filename
+        filename = file_or_filename
+    else: # a file object
+        try:
+            filename = file_or_filename.filename
+        except AttributeError:
+            filename = ''
 
+    ast = ts_grammar.parseFile(file_or_filename)
+    ts = TransitionSystem(filename=filename, format='sis')
+    ts.set_name( ast.modelName )
+    ts.set_signals( ast.signals )
+    ts.set_dummies( ast.dummies )
+
+    for a in ast.arcs:
+        s1 = ts.add_state(a[0])
+        s2 = ts.add_state(a[2])
+        ts.add_edge(s1,a[1],s2)
+
+    ts.set_initial_state( ast.marking[0] )
+
+    if ast.frequencies:
+        ts.add_state_frequencies()
+        for f in ast.frequencies:
+            ts.set_state_frequency(f[0], f[1])
+
+    if len(filename) > 0:
+		ts.mark_as_modified( False )
+    return ts
+
+def ts_from_file(filename):
+	return ts_from_sis(filename)
 
 class TransitionSystem:
     """ Class representing a Transitions System. Uses a graph_tool graph as 
@@ -131,6 +131,8 @@ class TransitionSystem:
         self.g.graph_properties["name"] = self.gp_name
         self.gp_signals = self.g.new_graph_property("vector<string>")
         self.g.graph_properties["signals"] = self.gp_signals
+        self.gp_dummies = self.g.new_graph_property("vector<string>")
+        self.g.graph_properties["dummies"] = self.gp_dummies
         self.gp_initial_state = self.g.new_graph_property("string")
         self.g.graph_properties["initial_state"] = self.gp_initial_state
         self.vp_state_name = self.g.new_vertex_property("string")
@@ -178,11 +180,18 @@ class TransitionSystem:
     def get_signals(self):
         return self.gp_signals[self.g]
 
+    def set_dummies(self, dummies):
+        self.gp_dummies[self.g] = dummies
+
+    def get_dummies(self):
+        return self.gp_dummies[self.g]
+
     def set_initial_state(self, istate):
+        """Sets the name of the TS's initial state."""
         self.gp_initial_state[self.g] = istate
         
     def get_initial_state(self):
-        """Returns the initial state of the TS."""
+        """Returns the name initial state of the TS."""
         return self.gp_initial_state[self.g]
     
     def get_state_names(self):
@@ -200,13 +209,12 @@ class TransitionSystem:
         [target] can be states or state names. If the transition is not found,
         None is returned."""
         s = self.get_state(source)
-        t = get_state(target)
-        edges = self.g.edge(s, t, all_edges=True)
-        for e in edges:
-            if self.g.ep_edge_label[e] == label:
+        t = self.get_state(target)
+        for e in self.g.edge(s, t, all_edges=True):
+            if self.ep_edge_label[e] == label:
                 return e
         return None
-    
+
     def get_edges(self):
         """Returns all the transitions in the TS as a list of triples."""
         return [(self.vp_state_name[e.source()], self.ep_edge_label[e], 
@@ -247,6 +255,23 @@ class TransitionSystem:
         self.name_to_state[state_name] = state
         self.mark_as_modified()
         return state
+
+    def remove_state(self, state):
+        """Removes state [state] and all incident edges.
+        Note that this is a O(n) operation, where n is the number of states.
+        Use filtering if you need to delete more than one state.
+        """
+        s = self.get_state(state)
+        del self.name_to_state[self.vp_state_name[s]]
+        self.g.remove_vertex(s)
+        self.mark_as_modified()
+
+    def rename_state(self, state, name):
+        s = self.get_state(state)
+        del self.name_to_state[self.vp_state_name[s]]
+        self.vp_state_name[s] = name
+        self.name_to_state[name] = s
+        self.mark_as_modified()
     
     def add_edge(self, source, label, target):
         """Adds a labeled edge between source and target. The edge is returned.
@@ -257,22 +282,35 @@ class TransitionSystem:
         self.ep_edge_label[e] = label
         self.mark_as_modified()
         return e
+
+    def remove_edge(self, edge):
+        """Removes edge [edge]."""
+        self.g.remove_edge(edge)
+        self.mark_as_modified()
     
     def number_of_states(self):
         """Returns the number of states in the TS."""
         return self.g.num_vertices()
     
-    def follow_label(self, state, label):
-        """Returns a list of states that are reachable from [state] following
-        transitions with label [label]."""
+    def find_output_edges(self, state, label):
+        """Returns an iterable over all output arcs from [state] with label [label]."""
         s = self.get_state(state)
-        return [e.target() for e in s.out_edges() 
-                if self.ep_edge_label[e] == label]
-    
+        return (e for e in s.out_edges() if self.ep_edge_label[e] == label)
+
+    def find_input_edges(self, state, label):
+        """Returns an iterable over all input arcs to [state] with label [label]."""
+        s = self.get_state(state)
+        return (e for e in s.in_edges() if self.ep_edge_label[e] == label)
+
+    def follow_label(self, state, label):
+        """Returns an iterable over states that are reachable from [state] following
+        transitions with label [label]."""
+        return (e.target() for e in self.find_output_edges(self, state, label))
+
     def self_loop_labels(self):
         """Returns the set of labels of the self loop transitions."""
-        selfloops = [e for e in self.g.edges() if e.source() == e.target()]
-        return set([self.ep_edge_label[e] for e in selfloops])
+        selfloops = (e for e in self.g.edges() if e.source() == e.target())
+        return set(self.ep_edge_label[e] for e in selfloops)
     
     def map_log_frequencies(self, log, state_freq=True, edge_freq=True, 
                             state_cases=False):
@@ -295,13 +333,11 @@ class TransitionSystem:
                 self.vp_state_cases[s].append(i)
             for activity in case:
                 #compute destination state
-                edges = [e for e in s.out_edges() 
-                        if self.ep_edge_label[e] == activity]
-                #targets = self.follow_label(s, activity)
+                edges = list(self.find_output_edges(s, activity))
                 if len(edges) > 1:
                     raise IndeterminedTsError, "Ambiguous TS! Cannot map frequencies."
-                    #print ('Warning: Ambiguous TS! Frequency results will '
-                    #    'overapproximate real results')
+                elif len(edges) == 0:
+                    raise UnfitTsError, "Unfit TS"
                 if edge_freq:
                     self.ep_edge_frequency[edges[0]] += occ
                 s = edges[0].target()
@@ -327,7 +363,9 @@ class TransitionSystem:
             if self.get_name():
                 print >>file, '.model',self.get_name()
             print >>file, '.outputs', ' '.join(self.get_signals())
-            print >>file, '.state graph'
+            if self.get_dummies():
+                print >>file, '.dummy', ' '.join(self.get_dummies())
+            print >>file, '.state graph', '#', self.g.num_vertices(), 'states'
             for e in self.g.edges():
                 print >>file, self.vp_state_name[e.source()], self.ep_edge_label[e], self.vp_state_name[e.target()]
             print >> file, '.marking {',self.get_initial_state(),'}'
@@ -386,11 +424,15 @@ class TransitionSystem:
             gt.graph_draw(self.g, pos=pos, vprops=vprops, output=filename)
         elif engine=='astg':
             if filename.endswith('.ps'):
-                format = '-Tps'
+                format = '-Fps'
             elif filename.endswith('.gif'):
-                format = '-Tgif'
+                format = '-Fgif'
             elif filename.endswith('.dot'):
-                format = '-Tdot'
+                format = '-Fdot'
+            elif filename.endswith('.png'):
+                format = '-Fpng'
+            elif filename.endswith('.svg'):
+                format = '-Fsvg'
             else:
                 raise TypeError, 'Unsupported output for draw_astg'
             #check if file can be forwarded as input_filename 
@@ -403,12 +445,8 @@ class TransitionSystem:
                 self.save(tmpfile)
                 tmpfile.close()
                 input_filename = tmpfile.name
-            params = [draw_astg, '-sg', '-nonames', '-noinfo', format, input_filename]
+            params = ['draw_astg', '-sg', '-noinfo', format, input_filename]
             output = subprocess.check_output( params )
             with open(filename,'w+b') as f:
                 f.write(output)
- 
-#    def initialize(self):
-#        """Copy initial marking to current marking"""
-#        self.current_marking = self.initial_marking.copy()
-#        print "current marking:", self.current_marking
+

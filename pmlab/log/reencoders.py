@@ -1,14 +1,6 @@
-import pickle
 """Provides some custom reencoders for the pmlab package."""
+import pickle
 
-#def reencode_for_stp(word):
-#    """Identifiers cannot contain blanks nor underscores (since they interfere
-#    with the variable naming scheme)"""
-#    return word.translate(None,' \t_')
-
-#def alpha_reencoder(word):
-#    #use generators? yield
-#    return
 class NonInvertibleDictionaryError(Exception): pass
 
 def reencoder_from_file(filename):
@@ -73,24 +65,25 @@ class DictionaryReencoder():
         return DictionaryReencoder(inv_dict)
 
 class AlphaReencoder(DictionaryReencoder):
+    """Rencodes by transforming event names into a, b, c, ...
+    If more than 27 event names exist, then it uses a, b, ..., aa, ab, ... is used."""
     def update_dictionary(self, word):
-        #to be reimplemented in subclasses
-        self.dict[word] = chr(ord('a')+len(self.dict))
+        base_letter = ord('a')
+        num_letters = 1 + ord('z') - ord('a')
+        n = len(self.dict) + 1
+        name = ''
+        while n > 0:
+            name = chr(base_letter + ((n - 1) % num_letters)) + name
+            n = ((n - 1) / num_letters)
 
-#we cannot use global instance variables because they keep dictionary state
-#between calls!!!
-#alpha_reencoder = AlphaReencoder()
+        self.dict[word] = name
 
 class EventNumberReencoder(DictionaryReencoder):
+    """Reencodes by transforming event names into e0, e1, e2, ..."""
     def update_dictionary(self, word):
-        #to be reimplemented in subclasses
         self.dict[word] = 'e{0}'.format(len(self.dict))
-
-#event_number_reencoder = EventNumberReencoder()
 
 class StpReencoder(DictionaryReencoder):
     def update_dictionary(self, word):
-        #to be reimplemented in subclasses
         self.dict[word] = word.translate(None," '.\t_()-+&")
 
-#stp_reencoder = StpReencoder()

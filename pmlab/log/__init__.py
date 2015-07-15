@@ -5,6 +5,7 @@ from collections import defaultdict
 #from xml.dom.minidom import parse
 import xml.etree.ElementTree as xmltree
 from copy import deepcopy
+import gzip
 import reencoders
 import csv
 import re
@@ -40,14 +41,19 @@ def log_from_file(filename, format=None, universal_newline=False,
     name = None
     if isinstance(filename, basestring): #a filename
         open_mode = 'rU' if universal_newline else 'r'
-        file = open(filename, open_mode)
+        if filename.endswith('.gz'):
+            file = gzip.open(filename, 'rb')
+        else:
+            file = open(filename, open_mode)
         own_fid = True #we own this file and we must close it
         name = filename
     else:
         file = filename # a file
         name = file.name
     if format==None:
-        _, ext = os.path.splitext(name)
+        base, ext = os.path.splitext(name)
+        if ext == '.gz':
+            base, ext = os.path.splitext(base)
         if ext == '.tr':
             format = 'raw'
         elif ext == '.xes':
@@ -123,7 +129,7 @@ def log_from_iterable( file, filename=None, format=None, uniq_cases=False,
     log.reencoder_on_load = reencoders.DictionaryReencoder(encoded_act)
     return log
 
-def log_from_xes(filename, all_info=False, only_uniq_cases=False):
+def log_from_xes(file, all_info=False, only_uniq_cases=False):
     """Load a log in the XES format.
     
     [filename] can be a file or a filename.
@@ -132,16 +138,19 @@ def log_from_xes(filename, all_info=False, only_uniq_cases=False):
     an EnhancedLog.
     If [only_uniq_cases] is True, then we discard all other information and we
     keep only the unique cases."""
-    #xml = parse('steps.mxml')
-    if isinstance(filename, basestring): #a filename
-        name=filename
+    if isinstance(file, basestring): #a filename
+        filename=file
+        if filename.endswith('.gz'):
+            file=gzip.open(filename, 'rb')
+        else:
+            pass # Just send the filename to xmltree.parse
     else:
-        name=filename.name
+        filename=file.name
     if all_info and only_uniq_cases:
         raise ValueError, 'Incompatible arguments in log_from_xes'
     tr = {'concept:name':'name', 'lifecycle:transition':'transition',
             'time:timestamp':'timestamp'}
-    tree = xmltree.parse(filename)
+    tree = xmltree.parse(file)
     root = tree.getroot()
     traces = root.findall('{http://www.xes-standard.org/}trace')
     cases = []
@@ -163,9 +172,9 @@ def log_from_xes(filename, all_info=False, only_uniq_cases=False):
         else:
             cases.append(case)
     if all_info:
-        log = EnhancedLog(filename=name, format='xes', cases=cases)
+        log = EnhancedLog(filename=filename, format='xes', cases=cases)
     else:
-        log = Log(filename=name, format='xes', cases=cases, 
+        log = Log(filename=filename, format='xes', cases=cases,
                 uniq_cases=uniq_cases)
     return log
 
