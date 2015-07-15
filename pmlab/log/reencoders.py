@@ -79,7 +79,7 @@ class AlphaReencoder(DictionaryReencoder):
         self.dict[word] = name
 
 class EventNumberReencoder(DictionaryReencoder):
-	"""Reencodes by transforming event names into e0, e1, e2, ..."""
+    """Reencodes by transforming event names into e0, e1, e2, ..."""
     def update_dictionary(self, word):
         self.dict[word] = 'e{0}'.format(len(self.dict))
 

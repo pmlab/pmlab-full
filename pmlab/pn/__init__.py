@@ -8,7 +8,7 @@ from pyparsing import (ParserElement, Word, Optional, Literal, oneOf, LineEnd,
                         alphas, nums, alphanums, pythonStyleComment)
 import graph_tool.all as gt
 import xml.etree.ElementTree as xmltree
-from .. ts import ts_from_sis, draw_astg
+from .. ts import ts_from_sis
 
 __all__ = ['pn_from_ts', 'ts_from_pn', 'pn_from_file', 'PetriNet']
 
