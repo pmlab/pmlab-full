@@ -8,10 +8,9 @@ from pyparsing import (ParserElement, Word, Optional, Literal, oneOf, LineEnd,
                         alphas, nums, alphanums, pythonStyleComment)
 import graph_tool.all as gt
 import xml.etree.ElementTree as xmltree
-from .. ts import draw_astg
+from .. ts import ts_from_sis, draw_astg
 
-__all__ = ['pn_from_ts', 'pn_from_file', 'PetriNet']
-rbminer = '/usr/local/bin/rbminer'
+__all__ = ['pn_from_ts', 'ts_from_pn', 'pn_from_file', 'PetriNet']
 
 def pn_from_ts(ts, method='rbminer', k=1, agg=0 ):
     """Uses the [method] to generate a TS out of the log.
@@ -35,7 +34,7 @@ def pn_from_ts(ts, method='rbminer', k=1, agg=0 ):
             ts_filename = tmpfile.name
         else:
             ts_filename = ts.filename
-        params = [rbminer, '--k', '{0}'.format(k)]
+        params = ['rbminer', '--k', '{0}'.format(k)]
     #        return params
         if agg > 0:
             params += ['--agg','{0}'.format(agg)]
@@ -59,22 +58,45 @@ def pn_from_ts(ts, method='rbminer', k=1, agg=0 ):
     else:
         raise TypeError, "Invalid discovery method for the pn_from_ts function"
 
+def ts_from_pn(pn):
+    args = ['write_sg', '-huge']
+    need_to_write = pn.modified_since_last_write or pn.last_write_format != 'sis'
+    if not need_to_write: # We can pass the file "as-is"
+        args.append(pn.filename)
+
+    proc = subprocess.Popen(args, stdin = subprocess.PIPE, stdout = subprocess.PIPE, bufsize = -1, close_fds = True)
+
+    if need_to_write:
+        pn.save_as_sis(proc.stdin, temporary=True)
+    proc.stdin.close()
+
+    # No deadlock problem because write2sg first reads everything, then writes the result
+
+    ts = ts_from_sis(proc.stdout)
+    ts.mark_as_modified(True) # Comes from a pipe, not a file
+    proc.stdout.close()
+
+    proc.wait()
+    if proc.returncode != 0:
+        raise EnvironmentError, "call to write_sg failed"
+
+    return ts
 
 # definition of PN grammar
 ParserElement.setDefaultWhitespaceChars(" \t")
-id = Word(alphanums+"_\"':-")
-#place = Literal("p") + Word(nums)
+id = Word(alphanums+"_\"':.-")
 number = Word(nums).setParseAction(lambda tokens: int(tokens[0]))
 newlines = Suppress(OneOrMore(LineEnd()))
 modelName = ".model" + id("modelName") + newlines
-signalNames = ZeroOrMore( Suppress(oneOf(".inputs .outputs .dummy")) + OneOrMore( id ) + newlines)("signals")
+signalNames = ZeroOrMore( Suppress(oneOf(".inputs .outputs")) + OneOrMore( id ) + newlines)("signals")
+dummyNames = Optional(Suppress(".dummy") + OneOrMore( id ) + newlines, default=[])("dummies")
 arc = id + ZeroOrMore(Group(id + Optional(Suppress("(")+number+Suppress(")"), default=1))) + newlines
 graph = Literal(".graph") + Suppress(OneOrMore(LineEnd())) + OneOrMore(Group(arc))("arcs")
 capacity_list = ZeroOrMore(Group(id+Suppress("=")+number))
 capacity = ".capacity" + capacity_list("capacities") + newlines
 marking_list = ZeroOrMore(Group(id+Optional(Suppress("=")+number,default=1)))
 marking = ".marking"+Suppress("{") + marking_list("marking") + Suppress("}") + newlines
-pn = Optional(newlines) + Optional(modelName) + signalNames + graph + Optional(capacity) + marking + ".end"
+pn = Optional(newlines) + Optional(modelName) + signalNames + dummyNames + graph + Optional(capacity) + Optional(marking) + ".end"
 pn.ignore(pythonStyleComment)
 
 def pn_from_file(filename, format=None):
@@ -97,18 +119,18 @@ def pn_from_file(filename, format=None):
     raise ValueError, 'Invalid format'
 
 def pn_from_sis(filename):
-    """Loads a PN in SIS format."""
+    """Loads a PN in SIS format.
+
+    [file]: Can either be a filename or a file object."""
     net = PetriNet(filename=filename, format='sis')
-    ast = pn.parseFile( filename )
+    ast = pn.parseFile(filename)
     for t in ast.signals:
-        net.add_transition( t )
-    #net.name = ast.modelName
+        net.add_transition(t)
+    for t in ast.dummies:
+        net.add_transition(t, dummy=True)
+        
     net.set_name(ast.modelName)
-    #net.signals.update( ast.signals )
-#    tuplelist = [ (m[0],m[1]) for m in ast.capacities ]
-#    net.capacities = dict( tuplelist )
-#    net.initial_marking = dict( [ (m[0],m[1]) for m in ast.marking ] )
-    #print ast.arcs
+
     transitions = set(net.get_transitions())
     for a in ast.arcs:
         #print a[0]
@@ -116,11 +138,18 @@ def pn_from_sis(filename):
             # it's a place
             p = net.add_place(a[0])
             for t in a[1:]:
+                if t[0] not in transitions:
+                    raise ValueError, "place -> place arc"
                 net.add_edge(p,t[0],t[1])
-        else:
+        else: # a[0] is a transition
             for t in a[1:]:
-                p = net.add_place(t[0])
-                net.add_edge(a[0],p,t[1])
+                if t[0] in transitions: # implicit place
+                    p = net.add_place("ip%d" % net.g.num_vertices())
+                    net.add_edge(a[0],p,t[1])
+                    net.add_edge(p,t[0],t[1])
+                else: # transition -> place arc
+                    p = net.add_place(t[0])
+                    net.add_edge(a[0],p,t[1])
     for m in ast.marking:
         net.set_initial_marking(m[0],m[1])
     for m in ast.capacities:
@@ -147,20 +176,32 @@ def pn_from_pnml(filename):
         
     id_map = {}
 
+    def has_name(element):
+        node = element.find('%sname/%stext' % (ns, ns))
+        return node is not None
     def get_name_or_id(element):
         node = element.find('%sname/%stext' % (ns, ns))
         if node is not None:
             return node.text
         else:
             return element.attrib['id']
+    def remove_suffix(s, suffix):
+        if s.endswith(suffix):
+            return s[:-len(suffix)]
+        else:
+            return s
 
     # Recursively enumerate all nodes with tag = transition
     # They might be distributed in several <page> child tags
 
     for c in net.iterfind('.//%stransition' % ns):
         xml_id = c.attrib['id']
-        name = get_name_or_id(c)
-        id_map[xml_id] = pn.add_transition(name)
+        name = remove_suffix(get_name_or_id(c), '+complete')
+
+        # If it has no name, it's probably a dummy transition
+        dummy = not has_name(c)
+
+        id_map[xml_id] = pn.add_transition(name, dummy=dummy)
 
     for c in net.iterfind('.//%splace' % ns):
         xml_id = c.attrib['id']
@@ -175,7 +216,7 @@ def pn_from_pnml(filename):
 
     for c in net.iterfind('.//%sarc' % ns):
         pn.add_edge(id_map[c.attrib['source']], id_map[c.attrib['target']])
-           
+
     pn.to_initial_marking()
     return pn
 
@@ -210,6 +251,9 @@ class PetriNet:
         #either place or transition
         self.vp_place_initial_marking = self.g.new_vertex_property("int")
         self.g.vertex_properties["initial_marking"] = self.vp_place_initial_marking
+		# dummy transitions
+        self.vp_transition_dummy = self.g.new_vertex_property('bool')
+        self.g.vertex_properties["dummy"] = self.vp_transition_dummy
         #current marking is not stored when saving
         self.vp_current_marking = self.g.new_vertex_property("int")
         self.vp_place_capacity = self.g.new_vertex_property("int")
@@ -218,16 +262,6 @@ class PetriNet:
         self.ep_edge_weight = self.g.new_edge_property("int")
         self.g.edge_properties["weight"] = self.ep_edge_weight
         self.name_to_elem = {} # reverse map: name->elem
-        #places = set()
-#        self.place_postset = {} #dictionaries (one per place): for each event, store the weight of the arc 
-#        self.trans_postset = {}
-#        self.trans_preset = {}
-##        self.places = self.place_postset.viewkeys() # only works in 2.7
-#        self.name = ""
-#        self.signals = set()
-#        self.capacities = {}
-#        self.initial_marking = {}
-#        self.current_marking = {}
 
     def mark_as_modified(self, modified=True):
         """Marks the PN as modified (so that operations on this PN that 
@@ -241,12 +275,7 @@ class PetriNet:
         
     def get_name(self):
         return self.gp_name[self.g]
-    
-#    def set_signals(self, signals):
-#        self.gp_signals[self.g] = signals
-#        
-#    def get_signals(self):
-#        return self.gp_signals[self.g]
+
     def get_elem(self, elem):
         """Returns a vertex object representing the element. If [elem] is an 
         element name, then the corresponding element object (a vertex 
@@ -254,7 +283,7 @@ class PetriNet:
         already an object, the same object is returned."""
         return self.name_to_elem[elem] if isinstance(elem,str) else elem
 
-    def add_transition(self, transition_name):
+    def add_transition(self, transition_name, dummy=False):
         """Adds the given transition to the graph, if not previously added. The 
         transition (either existent or new) is returned."""
         if transition_name in self.name_to_elem:
@@ -262,6 +291,7 @@ class PetriNet:
         t = self.g.add_vertex()
         self.vp_elem_name[t] = transition_name
         self.vp_elem_type[t] = 'transition'
+        self.vp_transition_dummy[t] = dummy
         self.name_to_elem[transition_name] = t
         self.mark_as_modified()
         return t
@@ -292,26 +322,27 @@ class PetriNet:
     def set_initial_marking(self, place, tokens):
         p = self.get_elem(place)
         self.vp_place_initial_marking[p] = tokens
-    
+        
     def to_initial_marking(self):
         """Copy initial marking to current marking"""
         for p in self.get_places(names=False):
             self.vp_current_marking[p] = self.vp_place_initial_marking[p]
-#        print "current marking:", self.current_marking
-        
+
+    def is_transition_enabled(self, t):
+        """Computes whether transition [t] is enabled in the current marking"""
+        for e in self.get_elem(t).in_edges():
+            p = e.source()
+            if self.vp_current_marking[p] < self.ep_edge_weight[e]:
+                return False # This precondition is not satisfied
+        return True # All preconditions are satisfied
+
     def enabled_transitions(self, names=True):
         """Computes the set of enabled transitions in the current marking.
         If [names] then the set contains the transition names, otherwise
         it contains the objects."""
         set_enabled = []
         for t in self.get_transitions(names=False):
-            enabled = True
-            for e in t.in_edges():
-                p = e.source()
-                enabled = enabled and (self.vp_current_marking[p] >= self.ep_edge_weight[e])
-                if not enabled:
-                    break
-            if enabled:
+            if self.is_transition_enabled(t):
                 if names:
                     set_enabled.append( self.vp_elem_name[t] )
                 else:
@@ -328,7 +359,6 @@ class PetriNet:
         for e in t.out_edges():
             p = e.target()
             self.vp_current_marking[p] += self.ep_edge_weight[e]
-        #print "current marking:", self.current_marking
 
     def simulate(self, length, names=True):
         """Return a list of transitions of at most the given [length] obtained 
@@ -478,31 +508,43 @@ class PetriNet:
         elif format == 'pnml':
             return self.save_as_pnml(filename)
         else:
-            raise TypeError, "Invalid format for the log.write function"
+            raise TypeError, "Invalid format for the PetriNet.save function"
 
-    def save_as_sis(self, filename):
+    def save_as_sis(self, filename, temporary = False):
         """Save PN in SIS format to [filename].
         
-        [filename]: file or filename in which the PN has to be written"""
+        [filename]: file or filename in which the PN has to be written
+        [temporary]: whether it is being saved temporarily (if True, keep dirty state)"""
         own_fid = False
         if isinstance(filename, basestring): #a filename
             file = open(filename,'w')
-            self.filename = filename
             own_fid = True
         else:
             file = filename
-            self.filename = file.name
+            filename = file.name
         if not self.gp_name[self.g]:
             self.gp_name[self.g] = "pn"
+
+        def clean(name):
+            cleaned = "".join(c for c in name if c.isalpha() or c.isdigit() or c in ('_'))
+            assert len(cleaned) > 0
+            if not cleaned[0].isalpha(): cleaned = "s" + cleaned
+            return cleaned
+
         print >> file, ".model",self.gp_name[self.g]
-        print >> file, ".outputs",
-        for t in self.get_transitions():
-            print >> file, t, 
-        print >> file
+
+        transitions = [v for v in self.g.vertices() if self.vp_elem_type[v] == 'transition']
+        outputs = ' '.join(clean(self.vp_elem_name[v]) for v in transitions if not self.vp_transition_dummy[v])
+        if outputs:
+            print >> file, ".outputs", outputs
+        dummy = ' '.join(clean(self.vp_elem_name[v]) for v in transitions if self.vp_transition_dummy[v])
+        if dummy:
+            print >> file, ".dummy", dummy
+
         print >> file, ".graph"
         used_transitions = set()
         for e in self.g.edges():
-            print >> file, self.vp_elem_name[e.source()], self.vp_elem_name[e.target()],
+            print >> file, clean(self.vp_elem_name[e.source()]), clean(self.vp_elem_name[e.target()]),
             if self.ep_edge_weight[e] > 1:
                 print >> file, "(%d)" % self.ep_edge_weight[e]
             else:
@@ -511,30 +553,32 @@ class PetriNet:
                     self.vp_elem_type[e.target()] == 'transition' else
                     self.vp_elem_name[e.source()])
             used_transitions.add(t)
-        all_transitions = set( self.get_transitions() )
+        all_transitions = set(self.vp_elem_name[v] for v in transitions)
         for t in all_transitions - used_transitions:
-            print >> file, t
-        marking = []
-        for p in self.get_places(names=False):
-            tokens = self.vp_place_initial_marking[p]
-            if tokens == 1:
-                marking.append(self.vp_elem_name[p])
-            elif tokens > 1:
-                marking.append("{0}={1}".format(self.vp_elem_name[p], tokens))
-        if marking:
-            print >> file, ".marking {",' '.join(marking),"}"
+            print >> file, clean(t)
         capacity = []
         for p in self.get_places(names=False):
+            name = clean(self.vp_elem_name[p])
             tokens = self.vp_place_capacity[p]
-            if tokens == 1:
-                capacity.append(self.vp_elem_name[p])
-            elif tokens > 1:
-                capacity.append("{0}={1}".format(self.vp_elem_name[p], tokens))
+            if tokens > 1:
+                capacity.append("{0}={1}".format(name, tokens))
         if capacity:
             print >> file, ".capacity ",' '.join(capacity)
+        marking = []
+        for p in self.get_places(names=False):
+            name = clean(self.vp_elem_name[p])
+            tokens = self.vp_place_initial_marking[p]
+            if tokens == 1:
+                marking.append(name)
+            elif tokens > 1:
+                marking.append("{0}={1}".format(name, tokens))
+        if marking:
+            print >> file, ".marking {",' '.join(marking),"}"
         print >> file, ".end"
-        self.last_write_format = 'sis'
-        self.mark_as_modified(False)
+        if not temporary:
+            self.filename = filename
+            self.last_write_format = 'sis'
+            self.mark_as_modified(False)
         if own_fid:
             file.close()
 
@@ -551,7 +595,6 @@ class PetriNet:
             file = filename
             self.filename = file.name
 
-        # Set the graph name based on the passed in filename
         if not self.gp_name[self.g]:
             self.gp_name[self.g] = self.filename
 
@@ -577,7 +620,6 @@ class PetriNet:
         for p in self.get_places(names=False):
             name = self.vp_elem_name[p]
             xml_id = "n%d" % node_num
-
             node = xmltree.SubElement(page, '{http://www.pnml.org/version-2009/grammar/pnml}place',
                 {'{http://www.pnml.org/version-2009/grammar/pnml}id': xml_id})
             add_name(node, name)
@@ -594,7 +636,6 @@ class PetriNet:
             assert t not in id_map
             name = self.vp_elem_name[t]
             xml_id = "n%d" % node_num
-
             node = xmltree.SubElement(page, '{http://www.pnml.org/version-2009/grammar/pnml}transition',
                 {'{http://www.pnml.org/version-2009/grammar/pnml}id': xml_id})
             add_name(node, name)
@@ -604,7 +645,6 @@ class PetriNet:
 
         for e in self.g.edges():
             xml_id = "arc%d" % node_num
- 
             node = xmltree.SubElement(page, '{http://www.pnml.org/version-2009/grammar/pnml}arc', {
                 '{http://www.pnml.org/version-2009/grammar/pnml}id': xml_id,
                 '{http://www.pnml.org/version-2009/grammar/pnml}source': id_map[e.source()],
