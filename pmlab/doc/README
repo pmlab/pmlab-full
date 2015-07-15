@@ -1,0 +1,4 @@
+To colorize Python code, use Pygments Python package (it provides
+the pygmentize application):
+
+ pygmentize -f latex -O full session_events.py > session_events.tex
