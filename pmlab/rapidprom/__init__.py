@@ -4,6 +4,7 @@
 import os, os.path
 import subprocess
 import contextlib
+import csv
 from tempfile import mkdtemp
 from shutil import rmtree
 from pmlab.pn import pn_from_file
@@ -65,6 +66,14 @@ def _run_miner_script(script, log, verbose=False):
 
 		return pn
 
+def _parse_csv(filename):
+	res = {}
+	with open(filename, 'r') as f:
+		r = csv.reader(f, delimiter=';')
+		for row in r:
+			res[row[0]] = row[1]
+	return res
+
 def mine_ilp(log, verbose=False):
 	return _run_miner_script('mine_ilp.rmp', log, verbose)
 
@@ -76,4 +85,52 @@ def mine_inductive(log, verbose=False):
 		if name in ("tau from tree", "tau split") or name.startswith('start tau '):
 			pn.vp_transition_dummy[t] = True
 	return pn
+
+def mine_alpha(log, verbose=False):
+	return _run_miner_script('alpha.rmp', log, verbose)
+
+def measure_fitness(log, pn, states=100,verbose=False):
+	with _maketempdir() as tmpdir:
+		stdout = None if verbose else os.path.join(tmpdir, "output.txt")
+		log_file = os.path.join(tmpdir, 'log.xes')
+		net_file = os.path.join(tmpdir, 'net.pnml')
+		res_file = os.path.join(tmpdir, 'res.txt')
+
+		log.save(log_file, format='xes')
+		pn.save(net_file, format='pnml')
+		log.mark_as_modified(True) # We're about to delete its temporary file
+		pn.mark_as_modified(True)
+
+		run_rapidminer_script('fitness.rmp', stdout, {
+			'log_file': log_file,
+			'pnml_file': net_file,
+			'output_file': res_file,
+			'states': states
+		})
+
+		res = _parse_csv(res_file)
+
+		return float(res['Trace Fitness'])
+
+def measure_precision(log, pn, verbose=False):
+	with _maketempdir() as tmpdir:
+		stdout = None if verbose else os.path.join(tmpdir, "output.txt")
+		log_file = os.path.join(tmpdir, 'log.xes')
+		net_file = os.path.join(tmpdir, 'net.pnml')
+		res_file = os.path.join(tmpdir, 'res.txt')
+
+		log.save(log_file, format='xes')
+		pn.save(net_file, format='pnml')
+		log.mark_as_modified(True) # We're about to delete its temporary file
+		pn.mark_as_modified(True)
+
+		run_rapidminer_script('prec.rmp', stdout, {
+			'log_file': log_file,
+			'pnml_file': net_file,
+			'output_file': res_file
+		})
+
+		res = _parse_csv(res_file)
+
+		return {'fitness': float(res['Fitness']), 'precision': float(res['Precision'])}
 
