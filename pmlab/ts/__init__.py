@@ -137,7 +137,7 @@ class TransitionSystem:
         self.g.graph_properties["initial_state"] = self.gp_initial_state
         self.vp_state_name = self.g.new_vertex_property("string")
         self.g.vertex_properties["name"] = self.vp_state_name
-        
+
         self.ep_edge_label = self.g.new_edge_property("string")
         self.g.edge_properties["label"] = self.ep_edge_label
         self.name_to_state = {} # reverse map: name->state
@@ -191,7 +191,7 @@ class TransitionSystem:
         self.gp_initial_state[self.g] = istate
         
     def get_initial_state(self):
-        """Returns the name initial state of the TS."""
+        """Returns the name of the initial state of the TS."""
         return self.gp_initial_state[self.g]
     
     def get_state_names(self):
@@ -262,8 +262,18 @@ class TransitionSystem:
         Use filtering if you need to delete more than one state.
         """
         s = self.get_state(state)
-        del self.name_to_state[self.vp_state_name[s]]
         self.g.remove_vertex(s)
+        # Fully rebuild the name_to_state dict since this invalidates vertex indices
+        self.name_to_state = {self.vp_state_name[s] : s for s in self.g.vertices()}
+        self.mark_as_modified()
+
+	def remove_states(self, states):
+		"""Removes an iterable of states [states], and all their transitions.
+        [states] must not contain duplicates.
+        """
+        for v in sorted((self.get_state(s) for s in states), reverse = True):
+            self.g.remove_vertex(v)
+        self.name_to_state = {self.vp_state_name[s] : s for s in self.g.vertices()}
         self.mark_as_modified()
 
     def rename_state(self, state, name):
@@ -287,6 +297,12 @@ class TransitionSystem:
         """Removes edge [edge]."""
         self.g.remove_edge(edge)
         self.mark_as_modified()
+
+    def remove_edges(self, edges):
+        """Removes all the edges from iterable [edges]."""
+        for e in edges:
+            self.g.remove_edge(e)
+        self.mark_as_modified()
     
     def number_of_states(self):
         """Returns the number of states in the TS."""
@@ -297,6 +313,22 @@ class TransitionSystem:
         s = self.get_state(state)
         return (e for e in s.out_edges() if self.ep_edge_label[e] == label)
 
+    def find_output_edge(self, state, label):
+        """Returns the first output arc from [state] with label [label], or None."""
+        s = self.get_state(state)
+        for e in s.out_edges():
+            if self.ep_edge_label[e] == label:
+                return e
+        return None
+
+    def has_output_edge(self, state, label):
+        """Returns True if there is at least one output arc from [state] with label [label]."""
+        s = self.get_state(state)
+        for e in s.out_edges():
+            if self.ep_edge_label[e] == label:
+                return True
+        return False
+
     def find_input_edges(self, state, label):
         """Returns an iterable over all input arcs to [state] with label [label]."""
         s = self.get_state(state)
@@ -305,7 +337,7 @@ class TransitionSystem:
     def follow_label(self, state, label):
         """Returns an iterable over states that are reachable from [state] following
         transitions with label [label]."""
-        return (e.target() for e in self.find_output_edges(self, state, label))
+        return (e.target() for e in self.find_output_edges(state, label))
 
     def self_loop_labels(self):
         """Returns the set of labels of the self loop transitions."""
