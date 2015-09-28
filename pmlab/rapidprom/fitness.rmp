@@ -15,7 +15,7 @@
     <process expanded="true">
       <operator activated="true" class="prom:prom_context" compatibility="1.0.010" expanded="true" height="60" name="ProM Context" width="90" x="45" y="30"/>
       <operator activated="true" class="multiply" compatibility="5.3.015" expanded="true" height="112" name="Multiply" width="90" x="45" y="120"/>
-      <operator activated="true" class="prom:read_log" compatibility="1.0.010" expanded="true" height="60" name="Read Log File" width="90" x="246" y="75">
+      <operator activated="true" class="prom:read_log" compatibility="1.0.010" expanded="true" height="60" name="Read Log File" width="90" x="246" y="30">
         <parameter key="Visualize Log" value="Visualize Log as ExampleSet"/>
         <parameter key="filename" value="%{log_file}"/>
         <parameter key="type of the log file" value="Naive"/>
@@ -23,10 +23,13 @@
       <operator activated="true" class="prom:read_pnml_file" compatibility="1.0.010" expanded="true" height="76" name="Read PNML File" width="90" x="246" y="210">
         <parameter key="filename" value="%{pnml_file}"/>
       </operator>
-      <operator activated="true" class="prom:alignetconformance" compatibility="1.0.010" expanded="true" height="112" name="Check Precision based on 1Align-ETConformance" width="90" x="447" y="120">
-        <parameter key="Max Explored States (in Hundreds)" value="100"/>
+      <operator activated="true" class="prom:replay_a_log_on_petri_net_for_conformance" compatibility="1.0.010" expanded="true" height="112" name="Replay a Log on Petri Net for Conformance Analysis" width="90" x="447" y="75">
+        <parameter key="Calculate Precision / Generalization" value="true"/>
+        <parameter key="Max Explored States (in Hundreds)" value="%{states}"/>
+        <parameter key="Create No Final Marking" value="true"/>
       </operator>
-      <operator activated="true" class="write_csv" compatibility="5.3.015" expanded="true" height="76" name="Write CSV" width="90" x="581" y="75">
+      <operator activated="true" class="write_csv" compatibility="5.3.015" expanded="true" height="76" name="Write CSV" width="90" x="648" y="75">
+        <parameter key="csv_file" value="%{output_file}"/>
         <parameter key="column_separator" value=";"/>
         <parameter key="write_attribute_names" value="true"/>
         <parameter key="quote_nominal_values" value="true"/>
@@ -34,20 +37,14 @@
         <parameter key="append_to_file" value="false"/>
         <parameter key="encoding" value="SYSTEM"/>
       </operator>
-      <operator activated="true" class="write_file" compatibility="5.3.015" expanded="true" height="60" name="Write File" width="90" x="715" y="75">
-        <parameter key="resource_type" value="file"/>
-        <parameter key="filename" value="%{output_file}"/>
-        <parameter key="mime_type" value="application/octet-stream"/>
-      </operator>
       <connect from_op="ProM Context" from_port="context (ProM Context)" to_op="Multiply" to_port="input"/>
       <connect from_op="Multiply" from_port="output 1" to_op="Read Log File" to_port="context (ProM Context)"/>
       <connect from_op="Multiply" from_port="output 2" to_op="Read PNML File" to_port="context (ProM Context)"/>
-      <connect from_op="Multiply" from_port="output 3" to_op="Check Precision based on 1Align-ETConformance" to_port="context (ProM Context)"/>
-      <connect from_op="Read Log File" from_port="event log (ProM Event Log)" to_op="Check Precision based on 1Align-ETConformance" to_port="event log (ProM Event Log)"/>
-      <connect from_op="Read PNML File" from_port="model (ProM Petri Net)" to_op="Check Precision based on 1Align-ETConformance" to_port="model (ProM Petri Net)"/>
-      <connect from_op="Read PNML File" from_port="marking (ProM Marking)" to_op="Check Precision based on 1Align-ETConformance" to_port="marking (ProM Marking)"/>
-      <connect from_op="Check Precision based on 1Align-ETConformance" from_port="example set with metrics (Data Table)" to_op="Write CSV" to_port="input"/>
-      <connect from_op="Write CSV" from_port="file" to_op="Write File" to_port="file"/>
+      <connect from_op="Multiply" from_port="output 3" to_op="Replay a Log on Petri Net for Conformance Analysis" to_port="context (ProM Context)"/>
+      <connect from_op="Read Log File" from_port="event log (ProM Event Log)" to_op="Replay a Log on Petri Net for Conformance Analysis" to_port="event log (ProM Event Log)"/>
+      <connect from_op="Read PNML File" from_port="model (ProM Petri Net)" to_op="Replay a Log on Petri Net for Conformance Analysis" to_port="model (ProM Petri Net)"/>
+      <connect from_op="Read PNML File" from_port="marking (ProM Marking)" to_op="Replay a Log on Petri Net for Conformance Analysis" to_port="marking (ProM Marking)"/>
+      <connect from_op="Replay a Log on Petri Net for Conformance Analysis" from_port="example set with metrics (Data Table)" to_op="Write CSV" to_port="input"/>
       <portSpacing port="source_input 1" spacing="0"/>
       <portSpacing port="sink_result 1" spacing="0"/>
     </process>
