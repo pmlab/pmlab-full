@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<process version="5.3.015">
+  <context>
+    <input/>
+    <output/>
+    <macros/>
+  </context>
+  <operator activated="true" class="process" compatibility="5.3.015" expanded="true" name="Process">
+    <parameter key="logverbosity" value="init"/>
+    <parameter key="random_seed" value="2001"/>
+    <parameter key="send_mail" value="never"/>
+    <parameter key="notification_email" value=""/>
+    <parameter key="process_duration_for_mail" value="30"/>
+    <parameter key="encoding" value="SYSTEM"/>
+    <process expanded="true">
+      <operator activated="true" class="prom:prom_context" compatibility="1.0.010" expanded="true" height="60" name="ProM Context" width="90" x="45" y="30"/>
+      <operator activated="true" class="multiply" compatibility="5.3.015" expanded="true" height="112" name="Multiply" width="90" x="112" y="120"/>
+      <operator activated="true" class="prom:read_log" compatibility="1.0.010" expanded="true" height="60" name="Read Log File" width="90" x="246" y="75">
+        <parameter key="Visualize Log" value="Visualize Log as ExampleSet"/>
+        <parameter key="filename" value="%{log_file}"/>
+        <parameter key="type of the log file" value="Naive"/>
+      </operator>
+      <operator activated="true" class="prom:alpha_miner" compatibility="1.0.010" expanded="true" height="76" name="Alpha Miner" width="90" x="380" y="120"/>
+      <operator activated="true" class="prom:PNML_export" compatibility="1.0.010" expanded="true" height="94" name="PNML Export" width="90" x="514" y="255">
+        <parameter key="filename" value="%{output_file}"/>
+      </operator>
+      <connect from_op="ProM Context" from_port="context (ProM Context)" to_op="Multiply" to_port="input"/>
+      <connect from_op="Multiply" from_port="output 1" to_op="Read Log File" to_port="context (ProM Context)"/>
+      <connect from_op="Multiply" from_port="output 2" to_op="PNML Export" to_port="context (ProM Context)"/>
+      <connect from_op="Multiply" from_port="output 3" to_op="Alpha Miner" to_port="context (ProM Context)"/>
+      <connect from_op="Read Log File" from_port="event log (ProM Event Log)" to_op="Alpha Miner" to_port="event log (ProM Event Log)"/>
+      <connect from_op="Alpha Miner" from_port="model (ProM Petri Net)" to_op="PNML Export" to_port="model (ProM Petri Net)"/>
+      <connect from_op="Alpha Miner" from_port="marking (ProM Marking)" to_op="PNML Export" to_port="marking (ProM Marking)"/>
+      <portSpacing port="source_input 1" spacing="0"/>
+      <portSpacing port="sink_result 1" spacing="0"/>
+    </process>
+  </operator>
+</process>

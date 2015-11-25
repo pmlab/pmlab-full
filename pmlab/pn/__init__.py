@@ -488,7 +488,7 @@ class PetriNet:
                 self.save(tmpfile)
                 tmpfile.close()
                 input_filename = tmpfile.name
-            params = [draw_astg, '-sg', '-nonames', '-noinfo', format, input_filename]
+            params = ['draw_astg', '-sg', '-nonames', '-noinfo', format, input_filename]
             output = subprocess.check_output( params )
             with open(filename,'w+b') as f:
                 f.write(output)
