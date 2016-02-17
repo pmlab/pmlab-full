@@ -9,6 +9,7 @@ from pyparsing import (ParserElement, Word, Optional, Literal, oneOf, LineEnd,
 import graph_tool.all as gt
 import xml.etree.ElementTree as xmltree
 from .. ts import ts_from_sis
+from . tpn import pn_from_tpn
 
 __all__ = ['pn_from_ts', 'ts_from_pn', 'pn_from_file', 'PetriNet']
 
@@ -109,11 +110,15 @@ def pn_from_file(filename, format=None):
         name, ext = os.path.splitext(filename)
         if ext=='.g':
             return pn_from_sis(filename)
+        elif ext == '.tpn':
+            return pn_from_tpn(filename)
         elif ext=='.pnml':
             return pn_from_pnml(filename)
         raise ValueError, 'Format could not be deduced from filename extension'
     if format == 'sis':
         return pn_from_sis(filename)
+    elif format == 'tpn':
+        return pn_from_tpn(filename)
     elif format == 'pnml':
         return pn_from_pnml(filename)
     raise ValueError, 'Invalid format'
