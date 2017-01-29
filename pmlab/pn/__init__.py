@@ -643,6 +643,8 @@ class PetriNet:
         for t in self.get_transitions(names=False):
             assert t not in id_map
             name = self.vp_elem_name[t]
+            if self.vp_transition_dummy[t]:
+                name = '' # empty label for dummies
             xml_id = "n%d" % node_num
             node = xmltree.SubElement(page, '{http://www.pnml.org/version-2009/grammar/pnml}transition',
                 {'{http://www.pnml.org/version-2009/grammar/pnml}id': xml_id})
