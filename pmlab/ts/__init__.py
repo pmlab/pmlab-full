@@ -140,6 +140,7 @@ class TransitionSystem:
 
         self.ep_edge_label = self.g.new_edge_property("string")
         self.g.edge_properties["label"] = self.ep_edge_label
+
         self.name_to_state = {} # reverse map: name->state
         self.initial_state = []
 
@@ -202,7 +203,10 @@ class TransitionSystem:
         """Returns a vertex object representing the state. If [state] is a state
         name, then the corresponding state object is returned. If it is already
         an object, the same object is returned."""
-        return self.name_to_state[state] if isinstance(state,str) else state
+        if isinstance(state,str):
+            return self.g.vertex(self.name_to_state[state])
+        else:
+            return state
 
     def get_edge(self, source, label, target):
         """Returns a edge object representing the transition. [source] and
@@ -249,10 +253,10 @@ class TransitionSystem:
         """Adds the given state to the graph, if not previously added. The state
         (either existent or new) is returned."""
         if state_name in self.name_to_state:
-            return self.name_to_state[state_name]
+            return self.g.vertex(self.name_to_state[state_name])
         state = self.g.add_vertex()
         self.vp_state_name[state] = state_name
-        self.name_to_state[state_name] = state
+        self.name_to_state[state_name] = self.g.vertex_index[state]
         self.mark_as_modified()
         return state
 
@@ -264,7 +268,7 @@ class TransitionSystem:
         s = self.get_state(state)
         self.g.remove_vertex(s)
         # Fully rebuild the name_to_state dict since this invalidates vertex indices
-        self.name_to_state = {self.vp_state_name[s] : s for s in self.g.vertices()}
+        self.name_to_state = {self.vp_state_name[s] : self.g.vertex_index[s] for s in self.g.vertices()}
         self.mark_as_modified()
 
 	def remove_states(self, states):
@@ -273,14 +277,14 @@ class TransitionSystem:
         """
         for v in sorted((self.get_state(s) for s in states), reverse = True):
             self.g.remove_vertex(v)
-        self.name_to_state = {self.vp_state_name[s] : s for s in self.g.vertices()}
+        self.name_to_state = {self.vp_state_name[s] : self.g.vertex_index[s] for s in self.g.vertices()}
         self.mark_as_modified()
 
     def rename_state(self, state, name):
         s = self.get_state(state)
         del self.name_to_state[self.vp_state_name[s]]
         self.vp_state_name[s] = name
-        self.name_to_state[name] = s
+        self.name_to_state[name] = self.g.vertex_index[s]
         self.mark_as_modified()
     
     def add_edge(self, source, label, target):

@@ -4,7 +4,7 @@ setup(name = 'pmlab',
     description = 'Process Mining suite',
     author = ['Marc Sole','Josep Carmona'],
     author_email = 'jcarmona@lsi.upc.edu',
-    packages = ['pmlab','pmlab.log','pmlab.ts','pmlab.pn','pmlab.cnet','pmlab.bpmn','pmlab.scripts','pmlab.rapidprom'],
+    packages = ['pmlab','pmlab.log','pmlab.ts','pmlab.pn','pmlab.log_ts','pmlab.cnet','pmlab.bpmn','pmlab.scripts','pmlab.rapidprom'],
     package_data = {
         'pmlab.bpmn':['graphics/*.eps','graphics/*.gif'], #include figures
         'pmlab.rapidprom':['*.rmp'], 
