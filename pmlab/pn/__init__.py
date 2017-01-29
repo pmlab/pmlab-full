@@ -286,7 +286,10 @@ class PetriNet:
         element name, then the corresponding element object (a vertex 
         representing either a place or a transition) is returned. If it is 
         already an object, the same object is returned."""
-        return self.name_to_elem[elem] if isinstance(elem,str) else elem
+        if isinstance(elem, str):
+            return self.g.vertex(self.name_to_elem[elem])
+        else:
+            return elem
 
     def add_transition(self, transition_name, dummy=False):
         """Adds the given transition to the graph, if not previously added. The 
@@ -297,7 +300,7 @@ class PetriNet:
         self.vp_elem_name[t] = transition_name
         self.vp_elem_type[t] = 'transition'
         self.vp_transition_dummy[t] = dummy
-        self.name_to_elem[transition_name] = t
+        self.name_to_elem[transition_name] = self.g.vertex_index[t]
         self.mark_as_modified()
         return t
     
@@ -309,7 +312,7 @@ class PetriNet:
         p = self.g.add_vertex()
         self.vp_elem_name[p] = place_name
         self.vp_elem_type[p] = 'place'
-        self.name_to_elem[place_name] = p
+        self.name_to_elem[place_name] = self.g.vertex_index[p]
         self.mark_as_modified()
         return p
 
