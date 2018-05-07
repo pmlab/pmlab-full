@@ -1,4 +1,4 @@
-# PMLAB
+# pmlab-full
 Process Mining scripting environment
 PMLAB is an interactive programming environment for (exploratory) process
 mining computing and/or research on top of a process-oriented language. In this
