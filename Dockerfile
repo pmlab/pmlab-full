@@ -17,6 +17,9 @@ RUN ln -s /usr/lib/libboost_program_options.so.5 /usr/lib/libboost_program_optio
 	&& mv Release/bin/log2ts /usr/local/bin \
 	&& rm rbminer.tar.gz \
 	&& rm -rf Release
+RUN yum install -y boost-devel expat-devel
+RUN scl enable python27 "pip install numpy==1.4.1"
+scl enable python27 "pip install scipy==0.9"
 
 
 COPY . /app
