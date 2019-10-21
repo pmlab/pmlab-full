@@ -6,4 +6,4 @@ services:
     build: .
     stdin_open: true
     tty: true
-    command: scl enable python27 python
+    command: python
