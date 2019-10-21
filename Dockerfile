@@ -1,27 +1,26 @@
-FROM centos:6
+FROM ubuntu:xenial
 LABEL maintainer "DataMade <info@datamade.us>"
 
-RUN yum install -y libglibc.i686 suitesparse.i686 boost-program-options.i686 scl-utils centos-release-scl-rh && yum install -y python27-python python27-python-setuptools
-RUN ln -s /usr/lib/libboost_program_options.so.5 /usr/lib/libboost_program_options.so.1.40.0 \
-        && ln -s /usr/lib/libboost_program_options-mt.so.5 /usr/lib/libboost_program_options-mt.so.1.38.0 \
-	&& mkdir lp_solve \
-	&& cd lp_solve \
-	&& curl "http://downloads.sourceforge.net/project/lpsolve/lpsolve/5.5.2.5/lp_solve_5.5.2.5_dev_ux32.tar.gz" -L --output lp_solve.tar.gz \
-	&& tar xvf lp_solve.tar.gz \
-	&& mv liblpsolve55.* /usr/lib \
-	&& cd .. \
-	&& rm -rf lp_solve \
-	&& curl "http://personals.ac.upc.edu/msole/homepage/rbminer/rbminer.tar.gz" -L --output rbminer.tar.gz \
-	&& tar xvf rbminer.tar.gz \
-	&& mv Release/bin/rbminer /usr/local/bin \
-	&& mv Release/bin/log2ts /usr/local/bin \
-	&& rm rbminer.tar.gz \
-	&& rm -rf Release
-RUN yum install -y boost-devel expat-devel
-RUN scl enable python27 "pip install numpy==1.4.1"
-scl enable python27 "pip install scipy==0.9"
-
-
+RUN dpkg --add-architecture i386 \
+    && apt-get update \
+    && apt-get -y install curl \
+    && echo "deb http://downloads.skewed.de/apt/xenial xenial universe" >> /etc/apt/sources.list \
+    && echo "deb-src http://downloads.skewed.de/apt/xenial xenial universe" >> /etc/apt/sources.list \
+    && curl https://keys.openpgp.org/vks/v1/by-fingerprint/793CEFE14DBC851A2BFB1222612DEFB798507F25 -L --output graph-tool.key \
+    && apt-key add graph-tool.key \
+    && apt-get update
+RUN apt-get -y install equivs \
+    && equivs-control python-scipy.control \
+    && sed -i 's/<package name; defaults to equivs-dummy>/python-scipy/g' python-scipy.control \
+    && equivs-build --arch=i386 python-scipy.control \
+    && dpkg -i python-scipy_1.0_i386.deb \
+    && equivs-control python-matplotlib.control \
+    && sed -i 's/<package name; defaults to equivs-dummy>/python-matplotlib/g' python-matplotlib.control \
+    && equivs-build --arch=i386 python-matplotlib.control \
+    && dpkg -i python-matplotlib_1.0_i386.deb \
+    && apt-get purge -y equivs \
+    && apt-get autoremove -y \
+    && apt-get -y install python-graph-tool:i386
+    
 COPY . /app
 WORKDIR /app
-RUN scl enable python27 "python setup.py install"
