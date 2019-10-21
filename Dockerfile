@@ -10,6 +10,7 @@ RUN dpkg --add-architecture i386 \
     && echo "deb-src http://downloads.skewed.de/apt/trusty trusty universe" >> /etc/apt/sources.list \
     && curl https://keys.openpgp.org/vks/v1/by-fingerprint/793CEFE14DBC851A2BFB1222612DEFB798507F25 -L --output graph-tool.key \
     && apt-key add graph-tool.key \
+    && rm graph-tool.key \
     && apt-get update \
     && apt-get -y install libc6:i386 lp-solve:i386 gcc:i386 g++:i386  \
     && curl "http://downloads.sourceforge.net/project/boost/boost/1.40.0/boost_1_40_0.tar.gz" -L --output boost.tar.gz \
@@ -39,10 +40,14 @@ RUN dpkg --add-architecture i386 \
     && make \
     && make install \
     && cd ../.. \
-    && rm -rf stp \
+    && rm -rf stp* \
     && apt-get -y install python-graph-tool \
     && curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py \
-    && python get-pip.py
+    && python get-pip.py \
+    && rm get-pip.py \
+    && apt-get remove -y cmake3 bison flex build-essential \
+    && apt-get autoremove -y \
+    && apt-get -y install libstdc++6:i386
 
     
 COPY . /app
