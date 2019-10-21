@@ -1,4 +1,5 @@
 FROM ubuntu:trusty
+
 LABEL maintainer "DataMade <info@datamade.us>"
 
 RUN dpkg --add-architecture i386 \
@@ -10,7 +11,7 @@ RUN dpkg --add-architecture i386 \
     && curl https://keys.openpgp.org/vks/v1/by-fingerprint/793CEFE14DBC851A2BFB1222612DEFB798507F25 -L --output graph-tool.key \
     && apt-key add graph-tool.key \
     && apt-get update \
-    && apt-get -y install libc6:i386 lp-solve:i386 gcc:i386 g++:i386 python-graph-tool \
+    && apt-get -y install libc6:i386 lp-solve:i386 gcc:i386 g++:i386  \
     && curl "http://downloads.sourceforge.net/project/boost/boost/1.40.0/boost_1_40_0.tar.gz" -L --output boost.tar.gz \
     && tar xzf boost.tar.gz \
     && cd boost_1_40_0 \
@@ -28,8 +29,21 @@ RUN dpkg --add-architecture i386 \
     && mv Release/bin/log2ts /usr/local/bin \
     && rm rbminer.tar.gz \
     && rm -rf Release \
+    && apt-get -y install cmake3 bison flex libboost-program-options-dev libboost-dev python perl minisat zlib1g-dev build-essential \
+    && curl "https://github.com/stp/stp/archive/master.tar.gz" -L --output stp.tar.gz \
+    && tar xvf stp.tar.gz \
+    && cd stp-master \
+    && mkdir build \
+    && cd build \
+    && cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
+    && make \
+    && make install \
+    && cd ../.. \
+    && rm -rf stp \
+    && apt-get -y install python-graph-tool \
     && curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py \
     && python get-pip.py
+
     
 COPY . /app
 WORKDIR /app
