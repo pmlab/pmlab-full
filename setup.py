@@ -9,12 +9,11 @@ setup(name = 'pmlab',
         'pmlab.bpmn':['graphics/*.eps','graphics/*.gif'], #include figures
         'pmlab.rapidprom':['*.rmp'], 
     },
-    install_requires = [#'graph_tool >= 2.2.17',
-                        'pyparsing >= 1.5.2',
-#                        'pygame >= 1.9.1',
-                        'euclid >= 0.01',
-                        'pydot >= 1.0',
-#                        'hcluster',
-                        'bitstring >= 1.0'
+    install_requires = ['pyparsing == 2.0.1',
+                        'pygame == 1.9.2',
+                        'euclid == 0.01',
+                        'pydot == 1.0.28',
+                        'dedupe-hcluster == 0.3.3',
+                        'bitstring == 3.1.2'
 			]
     )
